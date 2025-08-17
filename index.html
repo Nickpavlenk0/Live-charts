@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Комбинированные графики — TradingView</title>
+  <style>
+    :root { color-scheme: dark; }
+    body{margin:0;background:#0b1220;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #1c2333}
+    header h1{font-size:16px;margin:0;color:#e6ecff;font-weight:600}
+    header .tf button{background:#0f1730;border:1px solid #24304a;color:#cdd7ff;border-radius:8px;padding:6px 10px;cursor:pointer}
+    header .tf button.active{background:#1b2a52}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:10px}
+    .tile{background:#0f1730;border:1px solid #1e2a44;border-radius:12px;overflow:hidden;min-height:280px;position:relative}
+    .tile h2{position:absolute;inset:8px auto auto 12px;margin:0;font:600 12px/1.2 system-ui;color:#9fb4ff;
+      z-index:2;background:rgba(15,23,48,.6);padding:4px 8px;border-radius:6px;border:1px solid #2a3a60}
+    .fallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#9fb4ff;font-size:13px;text-align:center;padding:16px}
+    .tile.fallback-on .fallback{display:flex}
+    iframe{width:100%;height:100%;border:0}
+    @media (max-width: 1100px){ .grid{grid-template-columns:repeat(2,1fr);} }
+    @media (max-width: 700px){ .grid{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Комбинированные свечные графики TradingView</h1>
+    <div class="tf" role="group" aria-label="Таймфрейм">
+      <button data-tf="30">30m</button>
+      <button data-tf="60" class="active">1h</button>
+      <button data-tf="240">4h</button>
+      <button data-tf="D">1d</button>
+    </div>
+  </header>
+
+  <main class="grid" id="grid"></main>
+
+  <script>
+    // Монеты портфеля (агрегатор CRYPTO:*, без биржи)
+    const symbols = [
+      {title:"BTC/USD",  tv:"CRYPTO:BTCUSD",  fallback:"BINANCE:BTCUSDT"},
+      {title:"ETH/USD",  tv:"CRYPTO:ETHUSD",  fallback:"BINANCE:ETHUSDT"},
+      {title:"SOL/USD",  tv:"CRYPTO:SOLUSD",  fallback:"BINANCE:SOLUSDT"},
+      {title:"SUI/USD",  tv:"CRYPTO:SUIUSD",  fallback:"BINANCE:SUIUSDT"},
+      {title:"INJ/USD",  tv:"CRYPTO:INJUSD",  fallback:"BINANCE:INJUSDT"},
+      {title:"LINK/USD", tv:"CRYPTO:LINKUSD", fallback:"BINANCE:LINKUSDT"},
+      {title:"ARB/USD",  tv:"CRYPTO:ARBUSD",  fallback:"BINANCE:ARBUSDT"},
+      {title:"AVAX/USD", tv:"CRYPTO:AVAXUSD", fallback:"BINANCE:AVAXUSDT"},
+      {title:"ADA/USD",  tv:"CRYPTO:ADAUSD",  fallback:"BINANCE:ADAUSDT"},
+      // {title:"POND/USDT", tv:"CRYPTO:PONDUSD", fallback:"BINANCE:PONDUSDT"},
+    ];
+
+    // Разрешить автоматически падать на биржевой тикер, если агрегатора нет:
+    const fallbackToExchange = false; // ← по умолчанию ВЫКЛЮЧЕНО (как просил)
+
+    let timeframe = "60"; // 30, 60, 240, "D"
+
+    const grid = document.getElementById("grid");
+    symbols.forEach((s, i) => {
+      const tile = document.createElement("section");
+      tile.className = "tile";
+      tile.innerHTML =
+        `<h2>${s.title}</h2>
+         <div class="fallback">Нет агрегатора CRYPTO для тикера.<br>
+           ${fallbackToExchange ? "Включён фолбэк на биржу." : "Фолбэк отключён."}
+         </div>
+         <div id="tv_${i}" class="pane"></div>`;
+      grid.appendChild(tile);
+      loadWidget(`tv_${i}`, s.tv, s.fallback, tile);
+    });
+
+    document.querySelectorAll(".tf button").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        document.querySelectorAll(".tf button").forEach(b=>b.classList.remove("active"));
+        btn.classList.add("active");
+        timeframe = btn.dataset.tf;
+        grid.querySelectorAll(".tile .pane").forEach((pane, idx)=>{
+          const s = symbols[idx];
+          pane.innerHTML = "";
+          loadWidget(pane.id, s.tv, s.fallback, pane.parentElement);
+        });
+      });
+    });
+
+    function loadWidget(containerId, primarySymbol, fallbackSymbol, tileEl){
+      const script = document.createElement("script");
+      script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+      script.type = "text/javascript";
+      const cfg = {
+        autosize: true,
+        symbol: primarySymbol,
+        interval: timeframe,
+        timezone: "Etc/UTC",
+        theme: "dark",
+        style: "1",
+        locale: "ru",
+        hide_top_toolbar: false,
+        hide_legend: true,
+        allow_symbol_change: false,
+        save_image: false,
+        calendar: false,
+        studies: [],
+        support_host: "https://www.tradingview.com",
+        container_id: containerId
+      };
+      script.innerHTML = JSON.stringify(cfg);
+      script.onerror = () => { tileEl.classList.add("fallback-on"); };
+      tileEl.querySelector(".pane").appendChild(script);
+
+      if (fallbackToExchange && fallbackSymbol){
+        setTimeout(()=>{
+          const frame = tileEl.querySelector("iframe");
+          if (!frame){
+            tileEl.classList.add("fallback-on");
+            const s2 = document.createElement("script");
+            s2.src  = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+            s2.type = "text/javascript";
+            const cfg2 = Object.assign({}, cfg, { symbol: fallbackSymbol });
+            s2.innerHTML = JSON.stringify(cfg2);
+            tileEl.querySelector(".pane").appendChild(s2);
+            tileEl.classList.remove("fallback-on");
+          }
+        }, 3000);
+      } else {
+        setTimeout(()=>{
+          const frame = tileEl.querySelector("iframe");
+          if (!frame) tileEl.classList.add("fallback-on");
+        }, 3000);
+      }
+    }
+  </script>
+</body>
+</html>
