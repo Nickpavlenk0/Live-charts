@@ -5,16 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Комбинированные свечные графики TradingView</title>
 
-  <!-- НИЧЕГО не подключаем здесь из TradingView (tv.js загружается внизу) -->
-
   <style>
     :root{
-      --bg:#0b1020;      /* фон */
-      --card:#111a2b;    /* карточка */
-      --text:#e6eefc;    /* основной текст */
-      --muted:#8ea3c8;   /* вторичный текст */
-      --accent:#2a3958;  /* бордеры/линиии */
-      --brand:#8fb4ff;   /* голубые акценты */
+      --bg:#0b1020; --card:#111a2b; --text:#e6eefc; --muted:#8ea3c8; --accent:#2a3958;
+      --brand:#8fb4ff;
     }
     html,body{height:100%;background:var(--bg);color:var(--text);margin:0;
       font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial}
@@ -23,7 +17,6 @@
     .row_title{margin:16px 16px 8px;color:#9fb4ff;font-weight:700}
 
     .grid{display:grid;gap:14px;padding:16px}
-    /* 1 колонка на телефоне; на планшете 2, на десктопе 4 */
     @media (min-width:560px){ .grid{grid-template-columns:repeat(2,1fr)}}
     @media (min-width:1080px){ .grid{grid-template-columns:repeat(4,1fr)}}
 
@@ -38,12 +31,12 @@
 </head>
 <body>
   <h1>Комбинированные свечные графики TradingView</h1>
-  <p class="help">Показываем 30m / 1h / 4h / 1d для каждой монеты. Биржа скрыта в тикере (OKX/Bitstamp/KuCoin), чтобы не ловить ошибку «нет агрегатора CRYPTO». Скользящие: MA5/10/20/50/200.</p>
+  <p class="help">Показываем 30m / 1h / 4h / 1d для каждой монеты. Биржа скрыта в тикере (OKX/Bitstamp/KuCoin), чтобы не ловить «нет агрегатора CRYPTO». Скользящие: MA5/10/20/50/200.</p>
 
   <div id="grid" class="grid"></div>
 
   <script>
-    /* ===== 1) Жёсткие тикеры TradingView (без CRYPTO-агрегатора) ===== */
+    // ===== 1) Жёсткие тикеры (без CRYPTO-агрегатора) =====
     const SYMBOLS = [
       { alias:'BTC / USD',  tv:'BITSTAMP:BTCUSD'   },
       { alias:'ETH / USD',  tv:'BITSTAMP:ETHUSD'   },
@@ -56,7 +49,7 @@
       { alias:'POND / USDT',tv:'KUCOIN:PONDUSDT'   },
     ];
 
-    /* ===== 2) Таймфреймы, рендерим одновременно ===== */
+    // ===== 2) Таймфреймы — рендерим одновременно =====
     const INTERVALS = [
       { label:'30m', value:'30'  },
       { label:'1h',  value:'60'  },
@@ -64,21 +57,21 @@
       { label:'1d',  value:'D'   },
     ];
 
-    /* ===== 3) Набор скользящих средних ===== */
-    const MA_LENGTHS = [5,10,20,50,200];
+    // ===== 3) Список МА для embed-виджета =====
+    const STUDIES = [
+      'MA@tv-basicstudies','MA@tv-basicstudies','MA@tv-basicstudies','MA@tv-basicstudies','MA@tv-basicstudies'
+    ];
+    // Переопределения входов для МА (если платформа поддержит — применит нужные периоды)
+    const STUDIES_OVERRIDES = {
+      'moving average.ma length': 5,
+      'moving average.ma length_1': 10,
+      'moving average.ma length_2': 20,
+      'moving average.ma length_3': 50,
+      'moving average.ma length_4': 200
+    };
 
-    /* Утилита безопасный id для контейнеров */
     const safeId = s => s.replace(/[^a-z0-9]+/gi,'_').toLowerCase();
 
-    /* Добавляем скользящие в конкретный виджет */
-    function addMAs(widget){
-      widget.onChartReady(() => {
-        const chart = widget.activeChart();
-        MA_LENGTHS.forEach(len => chart.createStudy('Moving Average', false, false, [len]));
-      });
-    }
-
-    /* Рендерим сетку */
     function renderAll(){
       const grid = document.getElementById('grid');
       grid.innerHTML = '';
@@ -108,36 +101,27 @@
 
           grid.appendChild(cell);
 
-          // Инициализация TradingView виджета
-          const widget = new TradingView.widget({
+          // ИНИЦИАЛИЗАЦИЯ embed-виджета (без onChartReady / activeChart)
+          new TradingView.widget({
             container_id: id,
             autosize: true,
-
-            // тикер конкретной биржи (OKX/Bitstamp/KuCoin)
             symbol: sym.tv,
-
-            // 30 / 60 / 240 / D
             interval: tf.value,
             timezone: 'Etc/UTC',
             theme: 'dark',
-            style: '1',           // свечи
+            style: '1',
             locale: 'ru',
-
-            // скрываем панели и легенду, чтобы не светить биржу
             hide_top_toolbar: true,
             hide_side_toolbar: true,
             hide_legend: true,
-
-            // индикаторы добавим программно ниже
-            studies: []
+            studies: STUDIES,
+            studies_overrides: STUDIES_OVERRIDES
           });
-
-          addMAs(widget);
         });
       });
     }
 
-    /* ===== 4) Грузим tv.js ОДИН раз, затем строим графики ===== */
+    // ===== 4) Грузим tv.js один раз и только после этого строим графики =====
     (function loadTV(){
       if (window.TradingView && window.TradingView.widget){ renderAll(); return; }
       const s = document.createElement('script');
