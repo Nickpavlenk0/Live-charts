@@ -4,119 +4,108 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Комбинированные свечные графики TradingView</title>
+  <!-- ВАЖНО: именно так, с закрывающим </script> -->
   <script src="https://s3.tradingview.com/tv.js"></script>
   <style>
-    :root { --bg:#0b1220; --card:#111a2b; --text:#e6eefc; --muted:#8ea3c0; }
-    html,body{height:100%;background:var(--bg);color:var(--text);margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    :root { color-scheme: dark; }
+    html,body{height:100%;background:#0b1220;color:#e6eefc;margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
     h1{margin:16px;padding:0 8px;font-size:20px}
+    .help{color:#8ea3c0;font-size:12px;margin:8px 16px 0}
     .grid{display:flex;flex-direction:column;gap:22px;padding:0 8px 32px}
     .row{display:flex;flex-direction:column;gap:12px}
-    .row__title{margin:0 8px;color:var(--muted);font-weight:600}
-    .cells{display:grid;gap:10px}
-    /* 2 столбца на телефоне, 4 – на десктопе */
-    .cells{grid-template-columns:1fr; }
-    @media(min-width:560px){ .cells{grid-template-columns:1fr 1fr;} }
-    @media(min-width:1100px){ .cells{grid-template-columns:repeat(4,1fr);} }
-
-    .cell{background:var(--card);border-radius:12px;padding:10px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset}
+    .row__title{margin:0 8px;color:#8ea3c0;font-weight:600}
+    .cells{display:grid;gap:10px;grid-template-columns:1fr}
+    @media(min-width:560px){ .cells{grid-template-columns:1fr 1fr} }
+    @media(min-width:1100px){ .cells{grid-template-columns:repeat(4,1fr)} }
+    .cell{background:#111a2b;border-radius:12px;padding:10px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset}
     .cell__header{display:flex;justify-content:space-between;align-items:center;margin:0 4px 8px}
     .cell__title{font-weight:700}
     .chart{width:100%;height:320px;border-radius:8px;overflow:hidden}
     @media(min-width:1400px){ .chart{height:360px} }
     @media(max-width:400px){ .chart{height:280px} }
-
-    .help{color:var(--muted);font-size:12px;margin:8px 16px 0}
   </style>
 </head>
 <body>
   <h1>Комбинированные свечные графики TradingView</h1>
-  <p class="help">Показываем 30m / 1h / 4h / 1d для каждой монеты. Биржа скрыта, данные берём с OKX/KuCoin/и др., чтобы не было ошибки
-    «нет агрегатора CRYPTO». Скользящие: MA5/10/20/50/200.</p>
-
+  <p class="help">30m / 1h / 4h / 1d для каждой монеты. Биржу скрываем; источники OKX/Bitstamp/KuCoin. Скользящие: MA5/10/20/50/200.</p>
   <div id="grid" class="grid"></div>
 
   <script>
-    // === 1) Маппинг монет -> конкретные тикеры TradingView (чтобы не падал CRYPTO-агрегатор) ===
-    // Подбирал доступные и стабильные источники. При желании можно заменить на свои.
+    // 1) Жёсткие тикеры TradingView, чтобы не падал CRYPTO-агрегатор
     const SYMBOLS = [
-      { alias: 'BTC / USD',  tv: 'BITSTAMP:BTCUSD'   },
-      { alias: 'ETH / USD',  tv: 'BITSTAMP:ETHUSD'   },
-      { alias: 'SOL / USDT', tv: 'OKX:SOLUSDT'       },
-      { alias: 'LINK / USDT',tv: 'OKX:LINKUSDT'      },
-      { alias: 'INJ / USDT', tv: 'OKX:INJUSDT'       },
-      { alias: 'ARB / USDT', tv: 'OKX:ARBUSDT'       }, // есть на OKX
-      { alias: 'SUI / USDT', tv: 'OKX:SUIUSDT'       },
-      { alias: 'POND / USDT',tv: 'KUCOIN:PONDUSDT'   }  // если нужен другой — поменяю
+      { alias: 'BTC / USD',  tv: 'BITSTAMP:BTCUSD' },
+      { alias: 'ETH / USD',  tv: 'BITSTAMP:ETHUSD' },
+      { alias: 'SOL / USDT', tv: 'OKX:SOLUSDT'     },
+      { alias: 'LINK / USDT',tv: 'OKX:LINKUSDT'    },
+      { alias: 'INJ / USDT', tv: 'OKX:INJUSDT'     },
+      { alias: 'ARB / USDT', tv: 'OKX:ARBUSDT'     },
+      { alias: 'SUI / USDT', tv: 'OKX:SUIUSDT'     },
+      { alias: 'POND / USDT',tv: 'KUCOIN:PONDUSDT' }
     ];
 
-    // === 2) Таймфреймы, которые рендерим одновременно ===
+    // 2) Таймфреймы, рендерим одновременно
     const INTERVALS = [
-      { label: '30m', value: '30'  },
-      { label: '1h',  value: '60'  },
-      { label: '4h',  value: '240' },
-      { label: '1d',  value: 'D'   },
+      { label:'30m', value:'30'  },
+      { label:'1h',  value:'60'  },
+      { label:'4h',  value:'240' },
+      { label:'1d',  value:'D'   },
     ];
 
-    // === 3) Набор скользящих средних ===
-    const MA_LENGTHS = [5, 10, 20, 50, 200];
+    // 3) Набор скользящих средних
+    const MA_LENGTHS = [5,10,20,50,200];
 
-    // Утилита: безопасный id для контейнеров
-    const safeId = s => s.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    // Утилита id
+    const safeId = s => s.replace(/[^a-z0-9]/gi,'_').toLowerCase();
 
-    // Добавляем скользящие, когда чарт готов
-    function addMovingAverages(widget) {
+    function addMAs(widget){
       widget.onChartReady(() => {
         const chart = widget.activeChart();
-        MA_LENGTHS.forEach(len => {
-          chart.createStudy('Moving Average', false, false, [len]);
-        });
+        MA_LENGTHS.forEach(n => chart.createStudy('Moving Average', false, false, [n]));
       });
     }
 
-    function mount() {
-      const $grid = document.getElementById('grid');
+    function mount(){
+      const grid = document.getElementById('grid');
 
       SYMBOLS.forEach(sym => {
-        // блок монеты
-        const $row = document.createElement('section');
-        $row.className = 'row';
+        const row = document.createElement('section');
+        row.className = 'row';
 
-        const $title = document.createElement('h2');
-        $title.className = 'row__title';
-        $title.textContent = sym.alias;
-        $row.appendChild($title);
+        const header = document.createElement('h2');
+        header.className = 'row__title';
+        header.textContent = sym.alias;
+        row.appendChild(header);
 
-        const $cells = document.createElement('div');
-        $cells.className = 'cells';
+        const cells = document.createElement('div');
+        cells.className = 'cells';
 
         INTERVALS.forEach(tf => {
-          const containerId = tv_${safeId(sym.alias)}_${safeId(tf.value)};
+          const id = `tv_${safeId(sym.alias)}_${safeId(tf.value)}`;
 
-          const $cell = document.createElement('div');
-          $cell.className = 'cell';
+          const cell = document.createElement('div');
+          cell.className = 'cell';
 
-          const $hdr = document.createElement('div');
-          $hdr.className = 'cell__header';
-          $hdr.innerHTML = <div class="cell__title">${tf.label}</div>;
-          $cell.appendChild($hdr);
+          const hdr = document.createElement('div');
+          hdr.className = 'cell__header';
+          hdr.innerHTML = `<div class="cell__title">${tf.label}</div>`;
+          cell.appendChild(hdr);
 
-          const $chart = document.createElement('div');
-          $chart.className = 'chart';
-          $chart.id = containerId;
-          $cell.appendChild($chart);
+          const holder = document.createElement('div');
+          holder.className = 'chart';
+          holder.id = id;
+          cell.appendChild(holder);
 
-          $cells.appendChild($cell);
+          cells.appendChild(cell);
 
-          const widget = new TradingView.widget({
-            container_id: containerId,
+          const w = new TradingView.widget({
+            container_id: id,
             autosize: true,
-            symbol: sym.tv,          // твёрдый источник (OKX/Bitstamp/KuCoin/…)
-            interval: tf.value,      // 30 / 60 / 240 / D
+            symbol: sym.tv,
+            interval: tf.value,
             timezone: "Etc/UTC",
             theme: "dark",
-            style: "1",              // свечи
+            style: "1",
             locale: "ru",
-            // скрываем шапку и лишнее, чтобы не было видно биржи:
             hide_top_toolbar: true,
             hide_side_toolbar: true,
             hide_legend: true,
@@ -125,14 +114,13 @@
             allow_symbol_change: false,
             details: false,
             calendar: false,
-            studies: []              // добавим MA программно ниже
+            studies: []
           });
-
-          addMovingAverages(widget);
+          addMAs(w);
         });
 
-        $row.appendChild($cells);
-        $grid.appendChild($row);
+        row.appendChild(cells);
+        grid.appendChild(row);
       });
     }
 
