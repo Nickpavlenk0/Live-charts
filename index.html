@@ -2,125 +2,160 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Комбинированные свечные графики TradingView</title>
-  <!-- ВАЖНО: именно так, с закрывающим </script> -->
+
+  <!-- Официальный скрипт виджета TradingView -->
   <script src="https://s3.tradingview.com/tv.js"></script>
+
   <style>
-    :root { color-scheme: dark; }
-    html,body{height:100%;background:#0b1220;color:#e6eefc;margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    h1{margin:16px;padding:0 8px;font-size:20px}
-    .help{color:#8ea3c0;font-size:12px;margin:8px 16px 0}
-    .grid{display:flex;flex-direction:column;gap:22px;padding:0 8px 32px}
-    .row{display:flex;flex-direction:column;gap:12px}
-    .row__title{margin:0 8px;color:#8ea3c0;font-weight:600}
-    .cells{display:grid;gap:10px;grid-template-columns:1fr}
-    @media(min-width:560px){ .cells{grid-template-columns:1fr 1fr} }
-    @media(min-width:1100px){ .cells{grid-template-columns:repeat(4,1fr)} }
-    .cell{background:#111a2b;border-radius:12px;padding:10px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset}
-    .cell__header{display:flex;justify-content:space-between;align-items:center;margin:0 4px 8px}
-    .cell__title{font-weight:700}
-    .chart{width:100%;height:320px;border-radius:8px;overflow:hidden}
-    @media(min-width:1400px){ .chart{height:360px} }
-    @media(max-width:400px){ .chart{height:280px} }
+    :root{
+      --bg:#0b1020;        /* фон */
+      --card:#111a2b;      /* карточка */
+      --text:#e6eefc;      /* текст */
+      --muted:#8ea3c8;     /* вторичный текст */
+      --accent:#2a3958;    /* бордеры/линии */
+    }
+
+    html, body { height:100%; background:var(--bg); color:var(--text); margin:0; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    h1 { margin:16px; color:var(--text); font-weight:700; }
+    .help { margin:0 16px 8px; color:var(--muted); font-size:12px; }
+
+    /* Один «ряд» = одна монета (заголовок + 4 таймфрейма) */
+    .row { margin: 0 16px 24px; }
+    .row_title { margin:8px 0 10px; color:#8fb4ff; font-weight:700; }
+
+    /* Сетка из таймфреймов: на мобиле 1 колонка, на планшете 2, на десктопе 4 */
+    .cells { display:grid; gap:10px; }
+    @media (max-width: 559px) { .cells{ grid-template-columns: 1fr; } }
+    @media (min-width: 560px) and (max-width: 1099px) { .cells{ grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 1100px) { .cells{ grid-template-columns: repeat(4, 1fr); } }
+
+    .cell{
+      background:var(--card);
+      border:1px solid var(--accent);
+      border-radius:10px;
+      box-shadow:0 1px 0 rgba(255,255,255,0.03) inset;
+      overflow:hidden;
+    }
+    .cell__header{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:6px 10px; background:#132a48; border-bottom:1px solid #2a3a60;
+      font-size:13px; color:#9fb4ff;
+    }
+    .cell__title{ font-weight:700; }
+    .chart{ width:100%; height:300px; }
+    @media (min-width: 560px){ .chart{ height: 340px; } }
+    @media (min-width: 1400px){ .chart{ height: 280px; } }
   </style>
 </head>
 <body>
   <h1>Комбинированные свечные графики TradingView</h1>
-  <p class="help">30m / 1h / 4h / 1d для каждой монеты. Биржу скрываем; источники OKX/Bitstamp/KuCoin. Скользящие: MA5/10/20/50/200.</p>
-  <div id="grid" class="grid"></div>
+  <p class="help">Показываем 30m / 1h / 4h / 1d для каждой монеты. Биржа зашита в тикер (OKX/Bitstamp/KuCoin), чтобы не было ошибки «нет агрегатора CRYPTO». Скользящие: MA5/10/20/50/200.</p>
+
+  <div id="grid"></div>
 
   <script>
-    // 1) Жёсткие тикеры TradingView, чтобы не падал CRYPTO-агрегатор
+    // ===== 1) Наши монеты — строго с конкретной биржей TradingView (без CRYPTO-агрегатора) =====
     const SYMBOLS = [
-      { alias: 'BTC / USD',  tv: 'BITSTAMP:BTCUSD' },
-      { alias: 'ETH / USD',  tv: 'BITSTAMP:ETHUSD' },
-      { alias: 'SOL / USDT', tv: 'OKX:SOLUSDT'     },
-      { alias: 'LINK / USDT',tv: 'OKX:LINKUSDT'    },
-      { alias: 'INJ / USDT', tv: 'OKX:INJUSDT'     },
-      { alias: 'ARB / USDT', tv: 'OKX:ARBUSDT'     },
-      { alias: 'SUI / USDT', tv: 'OKX:SUIUSDT'     },
-      { alias: 'POND / USDT',tv: 'KUCOIN:PONDUSDT' }
+      { alias: 'BTC / USD',   tv: 'BITSTAMP:BTCUSD'  },
+      { alias: 'ETH / USD',   tv: 'BITSTAMP:ETHUSD'  },
+      { alias: 'SOL / USDT',  tv: 'OKX:SOLUSDT'      },
+      { alias: 'LINK / USDT', tv: 'OKX:LINKUSDT'     },
+      { alias: 'INJ / USDT',  tv: 'OKX:INJUSDT'      },
+      { alias: 'ARB / USDT',  tv: 'OKX:ARBUSDT'      },
+      { alias: 'SUI / USDT',  tv: 'OKX:SUIUSDT'      },
+      { alias: 'POND / USDT', tv: 'KUCOIN:PONDUSDT'  }
     ];
 
-    // 2) Таймфреймы, рендерим одновременно
+    // ===== 2) Таймфреймы, которые рендерим одновременно =====
     const INTERVALS = [
-      { label:'30m', value:'30'  },
-      { label:'1h',  value:'60'  },
-      { label:'4h',  value:'240' },
-      { label:'1d',  value:'D'   },
+      { label: '30m', value: '30'  },
+      { label: '1h',  value: '60'  },
+      { label: '4h',  value: '240' },
+      { label: '1d',  value: 'D'   }
     ];
 
-    // 3) Набор скользящих средних
-    const MA_LENGTHS = [5,10,20,50,200];
+    // ===== 3) Набор скользящих средних =====
+    const MA_LENGTHS = [5, 10, 20, 50, 200];
 
-    // Утилита id
-    const safeId = s => s.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+    // Утилита: безопасный id для контейнеров
+    const safeId = s => s.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
+    // Добавляем скользящие в конкретный виджет
     function addMAs(widget){
       widget.onChartReady(() => {
         const chart = widget.activeChart();
-        MA_LENGTHS.forEach(n => chart.createStudy('Moving Average', false, false, [n]));
+        MA_LENGTHS.forEach(len => {
+          chart.createStudy('Moving Average', false, false, [len]);
+        });
       });
     }
 
+    // Основной рендер сетки
     function mount(){
-      const grid = document.getElementById('grid');
+      const $grid = document.getElementById('grid');
 
       SYMBOLS.forEach(sym => {
+        // Ряд для монеты
         const row = document.createElement('section');
         row.className = 'row';
 
+        // Заголовок «BTC / USD»
         const header = document.createElement('h2');
-        header.className = 'row__title';
+        header.className = 'row_title';
         header.textContent = sym.alias;
         row.appendChild(header);
 
+        // Сетка из таймфреймов
         const cells = document.createElement('div');
         cells.className = 'cells';
 
         INTERVALS.forEach(tf => {
-          const id = `tv_${safeId(sym.alias)}_${safeId(tf.value)}`;
-
-          const cell = document.createElement('div');
+          // Карточка таймфрейма
+          const cell  = document.createElement('div');
           cell.className = 'cell';
 
-          const hdr = document.createElement('div');
+          // Шапка карточки
+          const hdr  = document.createElement('div');
           hdr.className = 'cell__header';
           hdr.innerHTML = `<div class="cell__title">${tf.label}</div>`;
           cell.appendChild(hdr);
 
-          const holder = document.createElement('div');
-          holder.className = 'chart';
-          holder.id = id;
-          cell.appendChild(holder);
-
+          // Контейнер графика
+          const holderId = `tv_${safeId(sym.alias)}_${safeId(tf.value)}`;
+          const chartEl = document.createElement('div');
+          chartEl.className  = 'chart';
+          chartEl.id         = holderId;
+          cell.appendChild(chartEl);
           cells.appendChild(cell);
 
-          const w = new TradingView.widget({
-            container_id: id,
+          // Инициализация TradingView виджета
+          const widget = new TradingView.widget({
+            container_id: holderId,
             autosize: true,
-            symbol: sym.tv,
-            interval: tf.value,
-            timezone: "Etc/UTC",
-            theme: "dark",
-            style: "1",
-            locale: "ru",
+            symbol: sym.tv,           // твёрдый источник (OKX / Bitstamp / KuCoin)
+            interval: tf.value,       // 30 / 60 / 240 / D
+            timezone: 'Etc/UTC',
+            theme: 'dark',
+            style: '1',               // свечи
+            locale: 'ru',
+            // скрываем панели и легенду, чтобы не светить биржу
             hide_top_toolbar: true,
             hide_side_toolbar: true,
             hide_legend: true,
-            hide_symbol_status: true,
-            withdateranges: false,
             allow_symbol_change: false,
             details: false,
             calendar: false,
-            studies: []
+            studies: []               // добавим МА программно ниже
           });
-          addMAs(w);
+
+          // МА 5/10/20/50/200
+          addMAs(widget);
         });
 
         row.appendChild(cells);
-        grid.appendChild(row);
+        $grid.appendChild(row);
       });
     }
 
