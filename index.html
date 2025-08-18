@@ -1,133 +1,142 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Комбинированные графики — TradingView</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Комбинированные свечные графики TradingView</title>
+  <script src="https://s3.tradingview.com/tv.js"></script>
   <style>
-    :root { color-scheme: dark; }
-    body{margin:0;background:#0b1220;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-    header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #1c2333}
-    header h1{font-size:16px;margin:0;color:#e6ecff;font-weight:600}
-    header .tf button{background:#0f1730;border:1px solid #24304a;color:#cdd7ff;border-radius:8px;padding:6px 10px;cursor:pointer}
-    header .tf button.active{background:#1b2a52}
-    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:10px}
-    .tile{background:#0f1730;border:1px solid #1e2a44;border-radius:12px;overflow:hidden;min-height:280px;position:relative}
-    .tile h2{position:absolute;inset:8px auto auto 12px;margin:0;font:600 12px/1.2 system-ui;color:#9fb4ff;
-      z-index:2;background:rgba(15,23,48,.6);padding:4px 8px;border-radius:6px;border:1px solid #2a3a60}
-    .fallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#9fb4ff;font-size:13px;text-align:center;padding:16px}
-    .tile.fallback-on .fallback{display:flex}
-    iframe{width:100%;height:100%;border:0}
-    @media (max-width: 1100px){ .grid{grid-template-columns:repeat(2,1fr);} }
-    @media (max-width: 700px){ .grid{grid-template-columns:1fr;} }
+    :root { --bg:#0b1220; --card:#111a2b; --text:#e6eefc; --muted:#8ea3c0; }
+    html,body{height:100%;background:var(--bg);color:var(--text);margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    h1{margin:16px;padding:0 8px;font-size:20px}
+    .grid{display:flex;flex-direction:column;gap:22px;padding:0 8px 32px}
+    .row{display:flex;flex-direction:column;gap:12px}
+    .row__title{margin:0 8px;color:var(--muted);font-weight:600}
+    .cells{display:grid;gap:10px}
+    /* 2 столбца на телефоне, 4 – на десктопе */
+    .cells{grid-template-columns:1fr; }
+    @media(min-width:560px){ .cells{grid-template-columns:1fr 1fr;} }
+    @media(min-width:1100px){ .cells{grid-template-columns:repeat(4,1fr);} }
+
+    .cell{background:var(--card);border-radius:12px;padding:10px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset}
+    .cell__header{display:flex;justify-content:space-between;align-items:center;margin:0 4px 8px}
+    .cell__title{font-weight:700}
+    .chart{width:100%;height:320px;border-radius:8px;overflow:hidden}
+    @media(min-width:1400px){ .chart{height:360px} }
+    @media(max-width:400px){ .chart{height:280px} }
+
+    .help{color:var(--muted);font-size:12px;margin:8px 16px 0}
   </style>
 </head>
 <body>
-  <header>
-    <h1>Комбинированные свечные графики TradingView</h1>
-    <div class="tf" role="group" aria-label="Таймфрейм">
-      <button data-tf="30">30m</button>
-      <button data-tf="60" class="active">1h</button>
-      <button data-tf="240">4h</button>
-      <button data-tf="D">1d</button>
-    </div>
-  </header>
+  <h1>Комбинированные свечные графики TradingView</h1>
+  <p class="help">Показываем 30m / 1h / 4h / 1d для каждой монеты. Биржа скрыта, данные берём с OKX/KuCoin/и др., чтобы не было ошибки
+    «нет агрегатора CRYPTO». Скользящие: MA5/10/20/50/200.</p>
 
-  <main class="grid" id="grid"></main>
+  <div id="grid" class="grid"></div>
 
   <script>
-    // Монеты портфеля (агрегатор CRYPTO:*, без биржи)
-    const symbols = [
-      {title:"BTC/USD",  tv:"CRYPTO:BTCUSD",  fallback:"BINANCE:BTCUSDT"},
-      {title:"ETH/USD",  tv:"CRYPTO:ETHUSD",  fallback:"BINANCE:ETHUSDT"},
-      {title:"SOL/USD",  tv:"CRYPTO:SOLUSD",  fallback:"BINANCE:SOLUSDT"},
-      {title:"SUI/USD",  tv:"CRYPTO:SUIUSD",  fallback:"BINANCE:SUIUSDT"},
-      {title:"INJ/USD",  tv:"CRYPTO:INJUSD",  fallback:"BINANCE:INJUSDT"},
-      {title:"LINK/USD", tv:"CRYPTO:LINKUSD", fallback:"BINANCE:LINKUSDT"},
-      {title:"ARB/USDT", tv:"BYBIT:ARBUSDT", fallback:"BINANCE:ARBUSDT"},
-      {title:"AVAX/USD", tv:"CRYPTO:AVAXUSD", fallback:"BINANCE:AVAXUSDT"},
-      {title:"ADA/USD",  tv:"CRYPTO:ADAUSD",  fallback:"BINANCE:ADAUSDT"},
-      // {title:"POND/USDT", tv:"CRYPTO:PONDUSD", fallback:"BINANCE:PONDUSDT"},
+    // === 1) Маппинг монет -> конкретные тикеры TradingView (чтобы не падал CRYPTO-агрегатор) ===
+    // Подбирал доступные и стабильные источники. При желании можно заменить на свои.
+    const SYMBOLS = [
+      { alias: 'BTC / USD',  tv: 'BITSTAMP:BTCUSD'   },
+      { alias: 'ETH / USD',  tv: 'BITSTAMP:ETHUSD'   },
+      { alias: 'SOL / USDT', tv: 'OKX:SOLUSDT'       },
+      { alias: 'LINK / USDT',tv: 'OKX:LINKUSDT'      },
+      { alias: 'INJ / USDT', tv: 'OKX:INJUSDT'       },
+      { alias: 'ARB / USDT', tv: 'OKX:ARBUSDT'       }, // есть на OKX
+      { alias: 'SUI / USDT', tv: 'OKX:SUIUSDT'       },
+      { alias: 'POND / USDT',tv: 'KUCOIN:PONDUSDT'   }  // если нужен другой — поменяю
     ];
 
-    // Разрешить автоматически падать на биржевой тикер, если агрегатора нет:
-    const fallbackToExchange = false; // ← по умолчанию ВЫКЛЮЧЕНО (как просил)
+    // === 2) Таймфреймы, которые рендерим одновременно ===
+    const INTERVALS = [
+      { label: '30m', value: '30'  },
+      { label: '1h',  value: '60'  },
+      { label: '4h',  value: '240' },
+      { label: '1d',  value: 'D'   },
+    ];
 
-    let timeframe = "60"; // 30, 60, 240, "D"
+    // === 3) Набор скользящих средних ===
+    const MA_LENGTHS = [5, 10, 20, 50, 200];
 
-    const grid = document.getElementById("grid");
-    symbols.forEach((s, i) => {
-      const tile = document.createElement("section");
-      tile.className = "tile";
-      tile.innerHTML =
-        `<h2>${s.title}</h2>
-         <div class="fallback">Нет агрегатора CRYPTO для тикера.<br>
-           ${fallbackToExchange ? "Включён фолбэк на биржу." : "Фолбэк отключён."}
-         </div>
-         <div id="tv_${i}" class="pane"></div>`;
-      grid.appendChild(tile);
-      loadWidget(`tv_${i}`, s.tv, s.fallback, tile);
-    });
+    // Утилита: безопасный id для контейнеров
+    const safeId = s => s.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
-    document.querySelectorAll(".tf button").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        document.querySelectorAll(".tf button").forEach(b=>b.classList.remove("active"));
-        btn.classList.add("active");
-        timeframe = btn.dataset.tf;
-        grid.querySelectorAll(".tile .pane").forEach((pane, idx)=>{
-          const s = symbols[idx];
-          pane.innerHTML = "";
-          loadWidget(pane.id, s.tv, s.fallback, pane.parentElement);
+    // Добавляем скользящие, когда чарт готов
+    function addMovingAverages(widget) {
+      widget.onChartReady(() => {
+        const chart = widget.activeChart();
+        MA_LENGTHS.forEach(len => {
+          chart.createStudy('Moving Average', false, false, [len]);
         });
       });
-    });
-
-    function loadWidget(containerId, primarySymbol, fallbackSymbol, tileEl){
-      const script = document.createElement("script");
-      script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-      script.type = "text/javascript";
-      const cfg = {
-        autosize: true,
-        symbol: primarySymbol,
-        interval: timeframe,
-        timezone: "Etc/UTC",
-        theme: "dark",
-        style: "1",
-        locale: "ru",
-        hide_top_toolbar: false,
-        hide_legend: true,
-        allow_symbol_change: false,
-        save_image: false,
-        calendar: false,
-        studies: [],
-        support_host: "https://www.tradingview.com",
-        container_id: containerId
-      };
-      script.innerHTML = JSON.stringify(cfg);
-      script.onerror = () => { tileEl.classList.add("fallback-on"); };
-      tileEl.querySelector(".pane").appendChild(script);
-
-      if (fallbackToExchange && fallbackSymbol){
-        setTimeout(()=>{
-          const frame = tileEl.querySelector("iframe");
-          if (!frame){
-            tileEl.classList.add("fallback-on");
-            const s2 = document.createElement("script");
-            s2.src  = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-            s2.type = "text/javascript";
-            const cfg2 = Object.assign({}, cfg, { symbol: fallbackSymbol });
-            s2.innerHTML = JSON.stringify(cfg2);
-            tileEl.querySelector(".pane").appendChild(s2);
-            tileEl.classList.remove("fallback-on");
-          }
-        }, 3000);
-      } else {
-        setTimeout(()=>{
-          const frame = tileEl.querySelector("iframe");
-          if (!frame) tileEl.classList.add("fallback-on");
-        }, 3000);
-      }
     }
+
+    function mount() {
+      const $grid = document.getElementById('grid');
+
+      SYMBOLS.forEach(sym => {
+        // блок монеты
+        const $row = document.createElement('section');
+        $row.className = 'row';
+
+        const $title = document.createElement('h2');
+        $title.className = 'row__title';
+        $title.textContent = sym.alias;
+        $row.appendChild($title);
+
+        const $cells = document.createElement('div');
+        $cells.className = 'cells';
+
+        INTERVALS.forEach(tf => {
+          const containerId = tv_${safeId(sym.alias)}_${safeId(tf.value)};
+
+          const $cell = document.createElement('div');
+          $cell.className = 'cell';
+
+          const $hdr = document.createElement('div');
+          $hdr.className = 'cell__header';
+          $hdr.innerHTML = <div class="cell__title">${tf.label}</div>;
+          $cell.appendChild($hdr);
+
+          const $chart = document.createElement('div');
+          $chart.className = 'chart';
+          $chart.id = containerId;
+          $cell.appendChild($chart);
+
+          $cells.appendChild($cell);
+
+          const widget = new TradingView.widget({
+            container_id: containerId,
+            autosize: true,
+            symbol: sym.tv,          // твёрдый источник (OKX/Bitstamp/KuCoin/…)
+            interval: tf.value,      // 30 / 60 / 240 / D
+            timezone: "Etc/UTC",
+            theme: "dark",
+            style: "1",              // свечи
+            locale: "ru",
+            // скрываем шапку и лишнее, чтобы не было видно биржи:
+            hide_top_toolbar: true,
+            hide_side_toolbar: true,
+            hide_legend: true,
+            hide_symbol_status: true,
+            withdateranges: false,
+            allow_symbol_change: false,
+            details: false,
+            calendar: false,
+            studies: []              // добавим MA программно ниже
+          });
+
+          addMovingAverages(widget);
+        });
+
+        $row.appendChild($cells);
+        $grid.appendChild($row);
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', mount);
   </script>
 </body>
 </html>
